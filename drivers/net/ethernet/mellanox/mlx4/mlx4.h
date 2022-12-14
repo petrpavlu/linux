@@ -878,8 +878,6 @@ struct mlx4_priv {
 	struct mlx4_dev		dev;
 
 	struct list_head	dev_list;
-	struct list_head	ctx_list;
-	spinlock_t		ctx_lock;
 	struct mutex		adev_mutex;
 	struct mlx4_adev	**adev;
 	int			adev_idx;
