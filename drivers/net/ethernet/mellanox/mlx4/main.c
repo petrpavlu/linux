@@ -4074,10 +4074,20 @@ static int mlx4_init_one(struct pci_dev *pdev, const struct pci_device_id *id)
 	mutex_init(&dev->persist->interface_state_mutex);
 	mutex_init(&dev->persist->pci_status_mutex);
 
+	priv->adev_idx = mlx4_adev_idx_alloc();
+	if (priv->adev_idx < 0) {
+		ret = priv->adev_idx;
+		goto err_persist_free;
+	}
+
+	ret = mlx4_adev_init(dev);
+	if (ret)
+		goto err_adev_idx_free;
+
 	ret = devl_params_register(devlink, mlx4_devlink_params,
 				   ARRAY_SIZE(mlx4_devlink_params));
 	if (ret)
-		goto err_devlink_unregister;
+		goto err_adev_cleanup;
 	mlx4_devlink_set_params_init_values(devlink);
 	ret =  __mlx4_init_one(pdev, id->driver_data, priv);
 	if (ret)
@@ -4091,7 +4101,11 @@ static int mlx4_init_one(struct pci_dev *pdev, const struct pci_device_id *id)
 err_params_unregister:
 	devl_params_unregister(devlink, mlx4_devlink_params,
 			       ARRAY_SIZE(mlx4_devlink_params));
-err_devlink_unregister:
+err_adev_cleanup:
+	mlx4_adev_cleanup(dev);
+err_adev_idx_free:
+	mlx4_adev_idx_free(priv->adev_idx);
+err_persist_free:
 	kfree(dev->persist);
 err_devlink_free:
 	devl_unlock(devlink);
@@ -4235,6 +4249,8 @@ static void mlx4_remove_one(struct pci_dev *pdev)
 	mlx4_pci_disable_device(dev);
 	devl_params_unregister(devlink, mlx4_devlink_params,
 			       ARRAY_SIZE(mlx4_devlink_params));
+	mlx4_adev_cleanup(dev);
+	mlx4_adev_idx_free(priv->adev_idx);
 	kfree(dev->persist);
 	devl_unlock(devlink);
 	devlink_free(devlink);
@@ -4571,6 +4587,9 @@ static int __init mlx4_verify_params(void)
 static int __init mlx4_init(void)
 {
 	int ret;
+
+	WARN_ONCE(strcmp(MLX4_ADEV_NAME, KBUILD_MODNAME),
+		  "mlx4_core name not in sync with kernel module name");
 
 	if (mlx4_verify_params())
 		return -EINVAL;
